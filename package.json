@@ -1,0 +1,73 @@
+{
+  "name": "@runomine/node",
+  "version": "0.1.0",
+  "description": "Cookieless, server-side analytics for runomine: pageviews and revenue events from your Node backend. Express, Next.js and Fetch-API frameworks.",
+  "license": "MIT",
+  "homepage": "https://runomine.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/runomine/runomine-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/runomine/runomine-node/issues"
+  },
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./next": {
+      "import": {
+        "types": "./dist/esm/next.d.ts",
+        "default": "./dist/esm/next.js"
+      },
+      "require": {
+        "types": "./dist/cjs/next.d.ts",
+        "default": "./dist/cjs/next.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "next": [
+        "./dist/esm/next.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/cjs-package.mjs",
+    "test": "npm run build && node --test"
+  },
+  "keywords": [
+    "analytics",
+    "cookieless",
+    "privacy",
+    "express",
+    "nextjs",
+    "runomine"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "~5.9.3"
+  }
+}

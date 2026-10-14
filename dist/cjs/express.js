@@ -1,0 +1,43 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createExpressMiddleware = createExpressMiddleware;
+const context_js_1 = require("./context.js");
+const util_js_1 = require("./util.js");
+/**
+ * Records a pageview for every GET answered 200 with text/html, after the response is sent.
+ * Skips assets, prefetches and ignored paths. Never throws and never delays the response.
+ */
+function createExpressMiddleware(options, getClient) {
+    return function runomineMiddleware(req, res, next) {
+        try {
+            if ((req.method ?? 'GET').toUpperCase() === 'GET') {
+                const path = req.path ?? (0, util_js_1.pathOf)(req.originalUrl ?? req.url);
+                const header = (name) => {
+                    const v = req.headers?.[name];
+                    return Array.isArray(v) ? v[0] : v;
+                };
+                if (!(0, context_js_1.isAssetPath)(path) && !(0, context_js_1.isIgnored)(path, options.ignore) && !(0, context_js_1.isPrefetch)(header)) {
+                    res.once('finish', () => {
+                        try {
+                            if (res.statusCode !== 200)
+                                return;
+                            const type = res.getHeader('content-type');
+                            if (!String(Array.isArray(type) ? type[0] : (type ?? '')).includes('text/html'))
+                                return;
+                            const user = options.user ? options.user(req, res) : undefined;
+                            const ip = options.ip ? options.ip(req) : undefined;
+                            (options.client ?? getClient()).pageview((0, context_js_1.fromNodeRequest)(req, { user, ip }));
+                        }
+                        catch {
+                            // analytics must never break the app
+                        }
+                    });
+                }
+            }
+        }
+        catch {
+            // ignore
+        }
+        next();
+    };
+}
