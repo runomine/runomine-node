@@ -1,0 +1,107 @@
+# Publishes @runomine/node to npm when package.json has a version npm doesn't have yet, then tags it vX.Y.Z.
+# This repository receives snapshot commits on main, so every push is checked; most of them change nothing here.
+# Authentication is npm trusted publishing (OIDC): no token is stored anywhere, and npm adds provenance on its own.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Is this version new?
+        id: plan
+        run: |
+          set -euo pipefail
+          name=$(jq -r .name package.json)
+          version=$(jq -r .version package.json)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::package.json version '$version' isn't X.Y.Z"; exit 1; }
+          url="https://registry.npmjs.org/${name/\//%2f}"
+          package=$(curl -sS -o /dev/null -w '%{http_code}' "$url")
+          release=$(curl -sS -o /dev/null -w '%{http_code}' "$url/$version")
+          case "$package/$release" in
+            404/*) publish=false
+                   echo "::notice title=$name isn't on npm yet::Publish the first version by hand (npm publish --access public), then add this workflow as its trusted publisher on npmjs.com. Nothing to do until then." ;;
+            200/200) publish=false; echo "$name@$version is already on npm." ;;
+            200/404) publish=true; echo "$name@$version is new: publishing." ;;
+            *) echo "::error::npm answered $package (package) / $release (version); not guessing."; exit 1 ;;
+          esac
+          tag=false
+          if [ -z "$(git ls-remote --tags origin "refs/tags/v$version")" ] && { [ "$publish" = true ] || [ "$release" = 200 ]; }; then tag=true; fi
+          { echo "version=$version"; echo "publish=$publish"; echo "tag=$tag"; } >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['18', '24']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm test
+      - name: The committed dist/ is what the sources build
+        run: |
+          git diff --exit-code -- dist || { echo "::error::dist/ is stale: run npm run build and commit it."; exit 1; }
+
+  publish:
+    needs: [plan, test]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - name: npm 11.5.1 or later (trusted publishing)
+        run: |
+          node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$(npm -v)" \
+            || npm install -g npm@^11.5.1
+          npm -v
+      - name: npm publish
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          # A prerelease (1.2.0-beta.1) goes to the "next" dist-tag, so `npm install` keeps getting the last stable one.
+          if [[ "$VERSION" == *-* ]]; then npm publish --tag next; else npm publish; fi
+
+  tag:
+    needs: [plan, publish]
+    # After a successful publish, or when npm already has the version (published by hand) but the tag is missing.
+    if: always() && needs.plan.outputs.tag == 'true' && (needs.publish.result == 'success' || (needs.publish.result == 'skipped' && needs.plan.outputs.publish == 'false'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag v${{ needs.plan.outputs.version }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$GITHUB_SHA" --silent
