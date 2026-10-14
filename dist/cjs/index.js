@@ -7,6 +7,8 @@ exports.init = init;
 exports.visitorFor = visitorFor;
 exports.checkoutMetadata = checkoutMetadata;
 exports.pageview = pageview;
+exports.sample = sample;
+exports.samples = samples;
 exports.track = track;
 exports.flush = flush;
 exports.shutdown = shutdown;
@@ -72,13 +74,31 @@ function checkoutMetadata(request, options = {}) {
         return user === null || user === undefined || user === '' ? {} : { runomine_user: String(user) };
     }
 }
-/** Records a pageview with the default client. See Client.pageview. */
-function pageview(input) {
+/** Records a pageview with the default client. See Client.pageview, with optional props: `pageview(req, { props: { section: 'news' } })`. */
+function pageview(input, options) {
     try {
-        defaultClient().pageview(input);
+        defaultClient().pageview(input, options);
     }
     catch {
         // never throws
+    }
+}
+/** Sends one sample of the app's own ops numbers with the default client, at once. See Client.sample. */
+function sample(data, ts) {
+    try {
+        return defaultClient().sample(data, ts);
+    }
+    catch {
+        return Promise.resolve(false);
+    }
+}
+/** Sends several samples with the default client. See Client.samples. */
+function samples(list) {
+    try {
+        return defaultClient().samples(list);
+    }
+    catch {
+        return Promise.resolve(false);
     }
 }
 /** Records a business event with the default client. See Client.track. */
@@ -123,6 +143,8 @@ const runomine = {
     init,
     pageview,
     track,
+    sample,
+    samples,
     flush,
     shutdown,
     express,

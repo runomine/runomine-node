@@ -23,7 +23,8 @@ export function createExpressMiddleware(options, getClient) {
                                 return;
                             const user = options.user ? options.user(req, res) : undefined;
                             const ip = options.ip ? options.ip(req) : undefined;
-                            (options.client ?? getClient()).pageview(fromNodeRequest(req, { user, ip }));
+                            const props = options.props ? options.props(req, res) : undefined;
+                            (options.client ?? getClient()).pageview(fromNodeRequest(req, { user, ip }), { props });
                         }
                         catch {
                             // analytics must never break the app

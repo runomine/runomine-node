@@ -8,8 +8,10 @@ import {
   type CheckoutMetadataOptions,
   type ClientOptions,
   type PageviewInput,
+  type PageviewOptions,
   type Platform,
   type Props,
+  type Sample,
   type TrackOptions,
 } from './client.js';
 import {
@@ -118,12 +120,30 @@ export async function checkoutMetadata(
   }
 }
 
-/** Records a pageview with the default client. */
-export function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>): void {
+/** Records a pageview with the default client, with optional props: `pageview(req, { props: { section: 'news' } })`. */
+export function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>, options?: PageviewOptions | null): void {
   try {
-    defaultClient().pageview(input);
+    defaultClient().pageview(input, options);
   } catch {
     // never throws
+  }
+}
+
+/** Sends one sample of the app's own ops numbers with the default client, at once. See Client.sample. */
+export function sample(data: Record<string, unknown>, ts?: Date | string | number): Promise<boolean> {
+  try {
+    return defaultClient().sample(data, ts);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+/** Sends several samples with the default client. See Client.samples. */
+export function samples(list: Iterable<Sample>): Promise<boolean> {
+  try {
+    return defaultClient().samples(list);
+  } catch {
+    return Promise.resolve(false);
   }
 }
 
@@ -223,10 +243,10 @@ export function withRunomine<Req extends FetchRequestLike, Ev extends FetchEvent
 
 export { Client, visitorHashAsync, fromRequest, isPageview };
 export { uuidv7 } from './util.js';
-export type { ClientOptions, PageviewInput, Props, TrackOptions, CheckoutMetadata, CheckoutMetadataOptions };
+export type { ClientOptions, PageviewInput, PageviewOptions, Props, Sample, TrackOptions, CheckoutMetadata, CheckoutMetadataOptions };
 export type { Revenue, WireEvent, FetchLike, FetchResponseLike } from './client.js';
 export type { RequestContext, RequestSource, FetchRequestLike, HeadersLike, Ignore, IgnoreRule, ResponseLike } from './context.js';
 
-const runomine = { createClient, defaultClient, init, track, pageview, flush, shutdown, withRunomine, visitorFor, checkoutMetadata, visitorHashAsync, fromRequest, isPageview };
+const runomine = { createClient, defaultClient, init, track, pageview, sample, samples, flush, shutdown, withRunomine, visitorFor, checkoutMetadata, visitorHashAsync, fromRequest, isPageview };
 
 export default runomine;

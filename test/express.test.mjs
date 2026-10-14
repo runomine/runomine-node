@@ -57,6 +57,15 @@ test('records GET 200 text/html after finish', async () => {
   assert.match(e.visitor, /^[0-9a-f]{16}$/);
 });
 
+test('props from the request or the response, after it is sent', async () => {
+  const res = fakeRes();
+  res.locals = { analytics: { section: 'news', area: 'public' } };
+  const [withProps] = await run(fakeReq(), res, { props: (req, res) => res.locals.analytics });
+  assert.deepEqual(withProps.props, { section: 'news', area: 'public' });
+  const [without] = await run(fakeReq(), fakeRes(), { props: () => null });
+  assert.equal(without.props, undefined);
+});
+
 test('visitor uses req.ip (trust proxy) and req.hostname', async () => {
   const fetch = fakeFetch();
   const client = createClient({ token: V.token, fetch, ...fastRetry });

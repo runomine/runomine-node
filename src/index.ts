@@ -8,8 +8,10 @@ import {
   type CheckoutMetadataOptions,
   type ClientOptions,
   type PageviewInput,
+  type PageviewOptions,
   type Platform,
   type Props,
+  type Sample,
   type TrackOptions,
 } from './client.js';
 import type { NodeRequestLike, RequestSource } from './context.js';
@@ -74,12 +76,30 @@ export function checkoutMetadata(
   }
 }
 
-/** Records a pageview with the default client. See Client.pageview. */
-export function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>): void {
+/** Records a pageview with the default client. See Client.pageview, with optional props: `pageview(req, { props: { section: 'news' } })`. */
+export function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>, options?: PageviewOptions | null): void {
   try {
-    defaultClient().pageview(input);
+    defaultClient().pageview(input, options);
   } catch {
     // never throws
+  }
+}
+
+/** Sends one sample of the app's own ops numbers with the default client, at once. See Client.sample. */
+export function sample(data: Record<string, unknown>, ts?: Date | string | number): Promise<boolean> {
+  try {
+    return defaultClient().sample(data, ts);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+/** Sends several samples with the default client. See Client.samples. */
+export function samples(list: Iterable<Sample>): Promise<boolean> {
+  try {
+    return defaultClient().samples(list);
+  } catch {
+    return Promise.resolve(false);
   }
 }
 
@@ -125,7 +145,7 @@ export function express<Req extends NodeRequestLike = NodeRequestLike & Loose, R
 
 export { Client, visitorHash, visitorHashAsync, fromRequest, fromNodeRequest, isPageview };
 export { uuidv7 } from './util.js';
-export type { ClientOptions, PageviewInput, Props, TrackOptions, ExpressOptions, ExpressResponseLike };
+export type { ClientOptions, PageviewInput, PageviewOptions, Props, Sample, TrackOptions, ExpressOptions, ExpressResponseLike };
 export type { CheckoutMetadata, CheckoutMetadataOptions };
 export type { Revenue, WireEvent, FetchLike, FetchResponseLike } from './client.js';
 export type {
@@ -147,6 +167,8 @@ const runomine = {
   init,
   pageview,
   track,
+  sample,
+  samples,
   flush,
   shutdown,
   express,

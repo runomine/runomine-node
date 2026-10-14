@@ -3,7 +3,7 @@
 // It never throws into the app and never blocks a request.
 import { resolveContext } from './context.js';
 import { env, hostOf, isPromise, normalizeHost, parseBool, then, utcDay, uuidv7, } from './util.js';
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 export const DEFAULT_URL = 'https://runomine.com';
 // ---- process hooks (Node only, guarded) ------------------------------------------------------
 const dirty = new Set();
@@ -39,6 +39,9 @@ function isoTs(ts) {
     const d = ts instanceof Date ? ts : new Date(ts);
     return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
+function propsOf(props) {
+    return props && typeof props === 'object' && Object.keys(props).length ? { ...props } : undefined;
+}
 function str(value) {
     if (value === null || value === undefined || value === '')
         return undefined;
@@ -58,6 +61,7 @@ export class Client {
     /** False when there is no token or RUNOMINE_ENABLED is false: every call is a no-op. */
     enabled;
     endpoint;
+    samplesEndpoint;
     token;
     platform;
     fetchImpl;
@@ -77,6 +81,7 @@ export class Client {
         this.token = options.token ?? env('RUNOMINE_TOKEN') ?? '';
         const base = (options.url ?? env('RUNOMINE_URL') ?? DEFAULT_URL).replace(/\/+$/, '');
         this.endpoint = base + '/api/v1/events';
+        this.samplesEndpoint = base + '/api/v1/samples';
         const enabled = options.enabled ?? parseBool(env('RUNOMINE_ENABLED')) ?? true;
         this.enabled = enabled && this.token !== '';
         this.fetchImpl = options.fetch ?? globalThis.fetch?.bind(globalThis);
@@ -95,11 +100,13 @@ export class Client {
     }
     /**
      * Records a pageview. Pass a RequestContext (`{ url, ip, userAgent, … }`), a Fetch Request or a
-     * Node/Express request. Returns immediately; the event is sent with the next batch.
+     * Node/Express request, and optionally props: `pageview(req, { props: { section: 'news' } })`.
+     * Returns immediately; the event is sent with the next batch.
      */
-    pageview(input) {
+    pageview(input, options) {
         if (!this.enabled)
             return;
+        const given = options?.props;
         const id = uuidv7(this.platform.random);
         const now = new Date().toISOString();
         this.add(() => then(input, (source) => {
@@ -119,6 +126,7 @@ export class Client {
                 visitor,
                 country: str(ctx.country),
                 user: str(ctx.user),
+                props: propsOf(given ?? ctx.props),
             }));
         }));
     }
@@ -150,9 +158,41 @@ export class Client {
                 revenue: options.revenue && options.revenue.currency
                     ? { amount: Number(options.revenue.amount), currency: String(options.revenue.currency) }
                     : undefined,
-                props: props && typeof props === 'object' && Object.keys(props).length ? { ...props } : undefined,
+                props: propsOf(props),
             }));
         }));
+    }
+    /**
+     * Sends one sample of the app's own ops numbers (queue depth, CPU, people on the site right now) to
+     * POST /api/v1/samples, for runomine's Live page: `await client.sample({ queue: { pending: 3 }, healthy: true })`.
+     * Sent at once, not queued, with the same retries as events; one sample per second (the same `ts` again
+     * replaces it). Resolves true when runomine took it, false when disabled or it failed. Never rejects.
+     */
+    sample(data, ts) {
+        return this.samples([{ data, ts }]);
+    }
+    /** Several samples (a catch-up after an outage), in calls of at most 500. True when every call was taken. */
+    async samples(samples) {
+        if (!this.enabled || this.closed)
+            return false;
+        try {
+            const rows = [];
+            for (const sample of samples) {
+                if (!sample || typeof sample.data !== 'object' || sample.data === null || Array.isArray(sample.data))
+                    continue;
+                rows.push({ ts: isoTs(sample.ts), data: sample.data });
+            }
+            let ok = true;
+            for (let i = 0; i < rows.length; i += 500) {
+                const chunk = rows.slice(i, i + 500);
+                ok = (await this.post(this.samplesEndpoint, JSON.stringify({ samples: chunk }), chunk.length, 'sample')) && ok;
+            }
+            return ok;
+        }
+        catch (error) {
+            this.log('could not send the samples', error);
+            return false;
+        }
     }
     /** Sends everything queued. Resolves when done (or given up on); never rejects. */
     flush() {
@@ -162,8 +202,10 @@ export class Client {
         const run = async () => {
             while (this.pending.size)
                 await Promise.allSettled([...this.pending]);
-            while (this.queue.length)
-                await this.send(this.queue.splice(0, this.batchSize));
+            while (this.queue.length) {
+                const batch = this.queue.splice(0, this.batchSize);
+                await this.post(this.endpoint, JSON.stringify({ events: batch }), batch.length, 'event');
+            }
             if (!this.hasWork())
                 dirty.delete(this);
         };
@@ -303,17 +345,17 @@ export class Client {
         }
         this.timer = null;
     }
-    async send(batch) {
+    /** One POST with retries. True on a 2xx; false once dropped. Never rejects. */
+    async post(url, body, count, kind) {
         if (!this.fetchImpl) {
             this.log('no fetch available, batch dropped');
-            return;
+            return false;
         }
-        const body = JSON.stringify({ events: batch });
         for (let attempt = 0;; attempt++) {
             let status = 0;
             let retryAfter;
             try {
-                const res = await this.fetchImpl(this.endpoint, {
+                const res = await this.fetchImpl(url, {
                     method: 'POST',
                     headers: {
                         authorization: 'Bearer ' + this.token,
@@ -330,13 +372,13 @@ export class Client {
                         try {
                             const parsed = JSON.parse(text);
                             if (parsed.rejected?.length)
-                                this.log(`${parsed.rejected.length} event(s) rejected`, parsed.rejected);
+                                this.log(`${parsed.rejected.length} ${kind}(s) rejected`, parsed.rejected);
                         }
                         catch {
                             // not JSON
                         }
                     }
-                    return;
+                    return true;
                 }
                 const header = res.headers?.get?.('retry-after');
                 if (header && /^\d+$/.test(header.trim()))
@@ -348,8 +390,8 @@ export class Client {
             }
             const retryable = status === 0 || status === 429 || status >= 500;
             if (!retryable || attempt >= this.retryDelays.length) {
-                this.log(`batch of ${batch.length} dropped (status ${status || 'network error'})`);
-                return;
+                this.log(`batch of ${count} ${kind}(s) dropped (status ${status || 'network error'})`);
+                return false;
             }
             await sleep(retryAfter ?? this.retryDelays[attempt]);
         }

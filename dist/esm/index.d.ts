@@ -1,4 +1,4 @@
-import { Client, type CheckoutMetadata, type CheckoutMetadataOptions, type ClientOptions, type PageviewInput, type Props, type TrackOptions } from './client.js';
+import { Client, type CheckoutMetadata, type CheckoutMetadataOptions, type ClientOptions, type PageviewInput, type PageviewOptions, type Props, type Sample, type TrackOptions } from './client.js';
 import type { NodeRequestLike, RequestSource } from './context.js';
 import { type ExpressOptions, type ExpressResponseLike } from './express.js';
 import { visitorHash } from './hash-node.js';
@@ -25,8 +25,12 @@ export declare function visitorFor(request: RequestSource | null | undefined, da
  *   stripe.checkout.sessions.create({ ..., metadata: checkoutMetadata(req, { user: req.user?.id }) })
  */
 export declare function checkoutMetadata(request: RequestSource | null | undefined, options?: CheckoutMetadataOptions): CheckoutMetadata;
-/** Records a pageview with the default client. See Client.pageview. */
-export declare function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>): void;
+/** Records a pageview with the default client. See Client.pageview, with optional props: `pageview(req, { props: { section: 'news' } })`. */
+export declare function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>, options?: PageviewOptions | null): void;
+/** Sends one sample of the app's own ops numbers with the default client, at once. See Client.sample. */
+export declare function sample(data: Record<string, unknown>, ts?: Date | string | number): Promise<boolean>;
+/** Sends several samples with the default client. See Client.samples. */
+export declare function samples(list: Iterable<Sample>): Promise<boolean>;
 /** Records a business event with the default client. See Client.track. */
 export declare function track(name: string, props?: Props | null, options?: TrackOptions | null): void;
 /** Sends everything queued by the default client. Never rejects. */
@@ -43,7 +47,7 @@ type Loose = {
 export declare function express<Req extends NodeRequestLike = NodeRequestLike & Loose, Res extends ExpressResponseLike = ExpressResponseLike & Loose>(options?: ExpressOptions<Req, Res>): (req: Req, res: Res, next: (err?: unknown) => void) => void;
 export { Client, visitorHash, visitorHashAsync, fromRequest, fromNodeRequest, isPageview };
 export { uuidv7 } from './util.js';
-export type { ClientOptions, PageviewInput, Props, TrackOptions, ExpressOptions, ExpressResponseLike };
+export type { ClientOptions, PageviewInput, PageviewOptions, Props, Sample, TrackOptions, ExpressOptions, ExpressResponseLike };
 export type { CheckoutMetadata, CheckoutMetadataOptions };
 export type { Revenue, WireEvent, FetchLike, FetchResponseLike } from './client.js';
 export type { RequestContext, RequestSource, FetchRequestLike, NodeRequestLike, HeadersLike, FromRequestOptions, Ignore, IgnoreRule, ResponseLike, IsPageviewOptions, } from './context.js';
@@ -53,6 +57,8 @@ declare const runomine: {
     init: typeof init;
     pageview: typeof pageview;
     track: typeof track;
+    sample: typeof sample;
+    samples: typeof samples;
     flush: typeof flush;
     shutdown: typeof shutdown;
     express: typeof express;

@@ -84,13 +84,31 @@ export async function checkoutMetadata(request, options = {}) {
         return user === null || user === undefined || user === '' ? {} : { runomine_user: String(user) };
     }
 }
-/** Records a pageview with the default client. */
-export function pageview(input) {
+/** Records a pageview with the default client, with optional props: `pageview(req, { props: { section: 'news' } })`. */
+export function pageview(input, options) {
     try {
-        defaultClient().pageview(input);
+        defaultClient().pageview(input, options);
     }
     catch {
         // never throws
+    }
+}
+/** Sends one sample of the app's own ops numbers with the default client, at once. See Client.sample. */
+export function sample(data, ts) {
+    try {
+        return defaultClient().sample(data, ts);
+    }
+    catch {
+        return Promise.resolve(false);
+    }
+}
+/** Sends several samples with the default client. See Client.samples. */
+export function samples(list) {
+    try {
+        return defaultClient().samples(list);
+    }
+    catch {
+        return Promise.resolve(false);
     }
 }
 /** Sends everything queued. Use with `after(() => flush())` or `await flush()` on serverless. Never rejects. */
@@ -144,5 +162,5 @@ export function withRunomine(middlewareOrOptions, maybeOptions) {
 }
 export { Client, visitorHashAsync, fromRequest, isPageview };
 export { uuidv7 } from './util.js';
-const runomine = { createClient, defaultClient, init, track, pageview, flush, shutdown, withRunomine, visitorFor, checkoutMetadata, visitorHashAsync, fromRequest, isPageview };
+const runomine = { createClient, defaultClient, init, track, pageview, sample, samples, flush, shutdown, withRunomine, visitorFor, checkoutMetadata, visitorHashAsync, fromRequest, isPageview };
 export default runomine;

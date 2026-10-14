@@ -1,4 +1,4 @@
-import { Client, type CheckoutMetadata, type CheckoutMetadataOptions, type ClientOptions, type PageviewInput, type Props, type TrackOptions } from './client.js';
+import { Client, type CheckoutMetadata, type CheckoutMetadataOptions, type ClientOptions, type PageviewInput, type PageviewOptions, type Props, type Sample, type TrackOptions } from './client.js';
 import { fromRequest, isPageview, type FetchRequestLike, type HeadersLike, type Ignore, type RequestSource } from './context.js';
 import { visitorHashAsync } from './hash-web.js';
 import { type MaybePromise } from './util.js';
@@ -35,8 +35,12 @@ export declare function visitorFor(request: MaybePromise<RequestSource | Headers
  * No visitor without a token or the request's IP. Never rejects.
  */
 export declare function checkoutMetadata(request: MaybePromise<RequestSource | HeadersLike | null | undefined>, options?: CheckoutMetadataOptions): Promise<CheckoutMetadata>;
-/** Records a pageview with the default client. */
-export declare function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>): void;
+/** Records a pageview with the default client, with optional props: `pageview(req, { props: { section: 'news' } })`. */
+export declare function pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>, options?: PageviewOptions | null): void;
+/** Sends one sample of the app's own ops numbers with the default client, at once. See Client.sample. */
+export declare function sample(data: Record<string, unknown>, ts?: Date | string | number): Promise<boolean>;
+/** Sends several samples with the default client. See Client.samples. */
+export declare function samples(list: Iterable<Sample>): Promise<boolean>;
 /** Sends everything queued. Use with `after(() => flush())` or `await flush()` on serverless. Never rejects. */
 export declare function flush(): Promise<void>;
 export declare function shutdown(): Promise<void>;
@@ -71,7 +75,7 @@ export declare function withRunomine<Req extends FetchRequestLike = FetchRequest
 export declare function withRunomine<Req extends FetchRequestLike, Ev extends FetchEventLike | undefined, Res>(middleware: Middleware<Req, Ev, Res>, options?: WithRunomineOptions<Req>): (request: Req, event: Ev) => Promise<Res>;
 export { Client, visitorHashAsync, fromRequest, isPageview };
 export { uuidv7 } from './util.js';
-export type { ClientOptions, PageviewInput, Props, TrackOptions, CheckoutMetadata, CheckoutMetadataOptions };
+export type { ClientOptions, PageviewInput, PageviewOptions, Props, Sample, TrackOptions, CheckoutMetadata, CheckoutMetadataOptions };
 export type { Revenue, WireEvent, FetchLike, FetchResponseLike } from './client.js';
 export type { RequestContext, RequestSource, FetchRequestLike, HeadersLike, Ignore, IgnoreRule, ResponseLike } from './context.js';
 declare const runomine: {
@@ -80,6 +84,8 @@ declare const runomine: {
     init: typeof init;
     track: typeof track;
     pageview: typeof pageview;
+    sample: typeof sample;
+    samples: typeof samples;
     flush: typeof flush;
     shutdown: typeof shutdown;
     withRunomine: typeof withRunomine;

@@ -22,7 +22,7 @@ export function fakeFetch(responses = [202]) {
     return {
       status: r,
       headers: new Headers(),
-      text: async () => (r === 202 ? JSON.stringify({ accepted: calls.at(-1).body.events.length, rejected: [] }) : ''),
+      text: async () => (r === 202 ? JSON.stringify({ accepted: (calls.at(-1).body.events ?? calls.at(-1).body.samples).length, rejected: [] }) : ''),
     };
   };
   fn.calls = calls;

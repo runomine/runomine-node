@@ -45,6 +45,59 @@ test('pageview payload shape, endpoint and headers', async () => {
   assert.ok(!JSON.stringify(body).includes(V.ip), 'the IP never leaves the server');
 });
 
+test('pageview props: on the input or as an option, like track props', async () => {
+  const fetch = fakeFetch();
+  const c = client(fetch);
+  const page = { url: 'https://example.com/news', ip: V.ip, userAgent: V.userAgent };
+  c.pageview({ ...page, props: { section: 'news', team: 7 } });
+  c.pageview(page, { props: { area: 'public' } });
+  c.pageview({ ...page, props: { section: 'ignored' } }, { props: { section: 'option wins' } });
+  c.pageview(new Request('https://example.com/news', { headers: { 'user-agent': V.userAgent, 'x-forwarded-for': V.ip } }), { props: { section: 'from a Request' } });
+  c.pageview(page, { props: {} });
+  c.pageview(page);
+  await c.flush();
+  const events = fetch.calls[0].body.events;
+  assert.deepEqual(events.map((e) => e.props), [
+    { section: 'news', team: 7 },
+    { area: 'public' },
+    { section: 'option wins' },
+    { section: 'from a Request' },
+    undefined,
+    undefined,
+  ]);
+  assert.deepEqual(Object.keys(events[0]), ['id', 'type', 'ts', 'url', 'user_agent', 'visitor', 'props']);
+});
+
+test('samples go at once to /api/v1/samples, not through the queue', async () => {
+  const fetch = fakeFetch();
+  const c = client(fetch);
+  assert.equal(await c.sample({ queue: { pending: 3 }, healthy: true }, '2026-10-13T20:00:00+02:00'), true);
+  assert.equal(await c.sample({ cpu: 0.5 }), true);
+  assert.equal(c.size, 0);
+  assert.equal(fetch.calls.length, 2);
+  const { url, init, body } = fetch.calls[0];
+  assert.equal(url, 'https://rm.test/api/v1/samples');
+  assert.equal(init.headers.authorization, 'Bearer ' + V.token);
+  assert.deepEqual(body, { samples: [{ ts: '2026-10-13T18:00:00.000Z', data: { queue: { pending: 3 }, healthy: true } }] });
+  assert.match(fetch.calls[1].body.samples[0].ts, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+});
+
+test('many samples go in calls of 500; failures resolve false after the retries', async () => {
+  const fetch = fakeFetch([202, 400]);
+  const c = client(fetch);
+  const rows = Array.from({ length: 501 }, (_, i) => ({ ts: 1760000000000 + i * 60000, data: { n: i } }));
+  assert.equal(await c.samples([...rows, null, { data: [1, 2] }, { ts: 1 }]), false);
+  assert.deepEqual(fetch.calls.map((call) => call.body.samples.length), [500, 1]);
+
+  const failing = fakeFetch([503]);
+  assert.equal(await client(failing).sample({ cpu: 1 }), false);
+  assert.equal(failing.calls.length, 3);
+  assert.equal(await client(fakeFetch([503, 202])).sample({ cpu: 1 }), true);
+  assert.equal(await client(fakeFetch()).samples([]), true);
+  assert.equal(await createClient({ token: '', fetch }).sample({ cpu: 1 }), false);
+  assert.equal(await client(fakeFetch([new Error('down')])).sample({ cpu: 1 }), false);
+});
+
 test('event payload shape with revenue, props and user', async () => {
   const fetch = fakeFetch();
   const c = client(fetch);

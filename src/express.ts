@@ -1,5 +1,5 @@
 // Express (and Connect-style) pageview middleware. No dependency on express itself: the types are structural.
-import type { Client } from './client.js';
+import type { Client, Props } from './client.js';
 import { fromNodeRequest, isAssetPath, isIgnored, isPrefetch, type Ignore, type NodeRequestLike } from './context.js';
 import { pathOf } from './util.js';
 
@@ -18,6 +18,8 @@ export interface ExpressOptions<Req extends NodeRequestLike = NodeRequestLike, R
   user?: (req: Req, res: Res) => string | number | null | undefined;
   /** Override the client IP. Default: `req.ip` (honours Express `trust proxy`), else the socket address. */
   ip?: (req: Req) => string | null | undefined;
+  /** The page view's props, e.g. `(req, res) => res.locals.analytics`. Called after the response is sent. */
+  props?: (req: Req, res: Res) => Props | null | undefined;
 }
 
 /**
@@ -44,7 +46,8 @@ export function createExpressMiddleware<Req extends NodeRequestLike, Res extends
               if (!String(Array.isArray(type) ? type[0] : (type ?? '')).includes('text/html')) return;
               const user = options.user ? options.user(req, res) : undefined;
               const ip = options.ip ? options.ip(req) : undefined;
-              (options.client ?? getClient()).pageview(fromNodeRequest(req, { user, ip }));
+              const props = options.props ? options.props(req, res) : undefined;
+              (options.client ?? getClient()).pageview(fromNodeRequest(req, { user, ip }), { props });
             } catch {
               // analytics must never break the app
             }

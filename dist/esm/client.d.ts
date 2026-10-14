@@ -1,6 +1,6 @@
 import { type RequestContext, type RequestSource } from './context.js';
 import { type MaybePromise, type RandomBytes } from './util.js';
-export declare const VERSION = "0.1.0";
+export declare const VERSION = "0.2.0";
 export declare const DEFAULT_URL = "https://runomine.com";
 export interface Revenue {
     /** Amount in major units: 4.99, not 499. */
@@ -66,6 +66,19 @@ export interface PageviewInput extends RequestContext {
     visitor?: string;
     /** Event time. Default: now. */
     ts?: Date | string | number;
+    /** Like `track`'s: flat, up to 20 keys, string or number values. Stored as the page view's dims. */
+    props?: Props | null;
+}
+export interface PageviewOptions {
+    /** Like `track`'s: flat, up to 20 keys, string or number values. Stored as the page view's dims. */
+    props?: Props | null;
+}
+/** An app's own ops numbers at one moment, for runomine's Live page. */
+export interface Sample {
+    /** Nested objects become dotted keys (`queue.pending`), booleans 0/1; anything that isn't a number is dropped. */
+    data: Record<string, unknown>;
+    /** When it was measured. Default: now. Any age is fine. */
+    ts?: Date | string | number;
 }
 export interface TrackOptions {
     revenue?: Revenue | null;
@@ -108,6 +121,7 @@ export declare class Client {
     /** False when there is no token or RUNOMINE_ENABLED is false: every call is a no-op. */
     readonly enabled: boolean;
     readonly endpoint: string;
+    readonly samplesEndpoint: string;
     private readonly token;
     private readonly platform;
     private readonly fetchImpl;
@@ -125,14 +139,24 @@ export declare class Client {
     constructor(options: ClientOptions | undefined, platform: Platform);
     /**
      * Records a pageview. Pass a RequestContext (`{ url, ip, userAgent, … }`), a Fetch Request or a
-     * Node/Express request. Returns immediately; the event is sent with the next batch.
+     * Node/Express request, and optionally props: `pageview(req, { props: { section: 'news' } })`.
+     * Returns immediately; the event is sent with the next batch.
      */
-    pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>): void;
+    pageview(input: MaybePromise<PageviewInput | RequestSource | null | undefined>, options?: PageviewOptions | null): void;
     /**
      * Records a business event: `track('signup')`, `track('purchase', { plan: 'pro' }, { revenue: { amount: 49, currency: 'EUR' }, user: 42, request: req })`.
      * Returns immediately; never throws.
      */
     track(name: string, props?: Props | null, trackOptions?: TrackOptions | null): void;
+    /**
+     * Sends one sample of the app's own ops numbers (queue depth, CPU, people on the site right now) to
+     * POST /api/v1/samples, for runomine's Live page: `await client.sample({ queue: { pending: 3 }, healthy: true })`.
+     * Sent at once, not queued, with the same retries as events; one sample per second (the same `ts` again
+     * replaces it). Resolves true when runomine took it, false when disabled or it failed. Never rejects.
+     */
+    sample(data: Record<string, unknown>, ts?: Date | string | number): Promise<boolean>;
+    /** Several samples (a catch-up after an outage), in calls of at most 500. True when every call was taken. */
+    samples(samples: Iterable<Sample>): Promise<boolean>;
     /** Sends everything queued. Resolves when done (or given up on); never rejects. */
     flush(): Promise<void>;
     /** Flushes and stops: later calls are ignored. Call it before `process.exit()`, which skips `beforeExit`. */
@@ -158,7 +182,8 @@ export declare class Client {
     private push;
     private markDirty;
     private clearTimer;
-    private send;
+    /** One POST with retries. True on a 2xx; false once dropped. Never rejects. */
+    private post;
 }
 export declare function getDefaultClient(platform: Platform): Client;
 /** Replaces the default client, e.g. to configure it in code instead of the environment. */

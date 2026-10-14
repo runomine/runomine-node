@@ -50,6 +50,7 @@ app.use(
   runomine.express({
     ignore: ['/admin', '/healthz', /^\/internal\//], // prefixes, RegExps, or (path) => boolean
     user: (req) => req.user?.id,                      // your own user id, when logged in
+    props: (req, res) => res.locals.analytics,        // page view props (below), optional
   }),
 );
 ```
@@ -58,6 +59,19 @@ The IP comes from `req.ip`, so it honours Express's `trust proxy`. The country c
 `CloudFront-Viewer-Country` when your CDN sets them.
 
 CommonJS works the same: `const runomine = require('@runomine/node')`.
+
+### Page view props
+
+Page views take props too, stored as the page view's dims: each key becomes a breakdown and a filter in Traffic
+(`area` feeds the Areas breakdown). Same rules as events: flat, up to 20 keys, string or number values. With Express,
+the middleware's `props` option sets them per request; anywhere else, record the page yourself:
+
+```js
+import { pageview, fromNodeRequest } from '@runomine/node';
+
+pageview(fromNodeRequest(req), { props: { section: 'news', area: 'public' } });
+// or on a plain context: pageview({ url, ip, userAgent, props: { section: 'news' } })
+```
 
 ## Track events
 
@@ -379,6 +393,21 @@ quietly; `401` (a bad token) is not retried. Every event has a UUID v7 `id`, so 
 
 `process.exit()` skips `beforeExit`: call `await shutdown()` first in scripts and on `SIGTERM`.
 
+### Samples: your app's own numbers on the Live page
+
+From a scheduled job, a few times a minute: queue depth, CPU, people on the site right now. Nested objects become
+dotted keys (`queue.pending`), booleans 0/1, anything that isn't a number is dropped. Samples are sent at once to
+`POST /api/v1/samples` (not queued) with the same retries; one per second (the same `ts` again replaces it), any age.
+
+```js
+const ok = await runomine.sample({ queue: { pending: 3, failed: 0 }, healthy: true });
+await runomine.sample({ cpu: 0.12 }, new Date('2026-10-14T10:00:00Z'));             // measured earlier
+await runomine.samples([{ ts: '2026-10-14T10:00:00Z', data: { cpu: 0.1 } }, …]);      // a catch-up, 500 per call
+```
+
+They resolve `true` when runomine took the call, `false` when the client is disabled or the call failed after the
+retries (so a cursor-based push knows not to advance). They never reject.
+
 ```js
 process.on('SIGTERM', async () => {
   await runomine.shutdown();
@@ -392,8 +421,9 @@ From `@runomine/node` (Node) and `@runomine/node/next` (Edge-safe; same API, asy
 
 | | |
 |---|---|
-| `pageview(input)` | Record a pageview from a `{ url, ip, userAgent, referrer, country, user }`, a Fetch `Request` or a Node request. |
+| `pageview(input, { props }?)` | Record a pageview from a `{ url, ip, userAgent, referrer, country, user, props }`, a Fetch `Request` or a Node request. |
 | `track(name, props?, { revenue, user, request, visitor, url })` | Record a business event. `@runomine/node/next` also takes `headers`. |
+| `sample(data, ts?)` / `samples([{ data, ts }])` | Send the app's own ops numbers to `/api/v1/samples`, at once. Resolve `true` when taken. |
 | `flush()` / `shutdown()` | Send everything now (never rejects) / flush and stop. |
 | `express(options)` | Express middleware (`@runomine/node` only). |
 | `withRunomine(middleware?, options)` | Next.js middleware/proxy wrapper (`@runomine/node/next` only). |

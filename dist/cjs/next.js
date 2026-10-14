@@ -8,6 +8,8 @@ exports.track = track;
 exports.visitorFor = visitorFor;
 exports.checkoutMetadata = checkoutMetadata;
 exports.pageview = pageview;
+exports.sample = sample;
+exports.samples = samples;
 exports.flush = flush;
 exports.shutdown = shutdown;
 exports.withRunomine = withRunomine;
@@ -101,13 +103,31 @@ async function checkoutMetadata(request, options = {}) {
         return user === null || user === undefined || user === '' ? {} : { runomine_user: String(user) };
     }
 }
-/** Records a pageview with the default client. */
-function pageview(input) {
+/** Records a pageview with the default client, with optional props: `pageview(req, { props: { section: 'news' } })`. */
+function pageview(input, options) {
     try {
-        defaultClient().pageview(input);
+        defaultClient().pageview(input, options);
     }
     catch {
         // never throws
+    }
+}
+/** Sends one sample of the app's own ops numbers with the default client, at once. See Client.sample. */
+function sample(data, ts) {
+    try {
+        return defaultClient().sample(data, ts);
+    }
+    catch {
+        return Promise.resolve(false);
+    }
+}
+/** Sends several samples with the default client. See Client.samples. */
+function samples(list) {
+    try {
+        return defaultClient().samples(list);
+    }
+    catch {
+        return Promise.resolve(false);
     }
 }
 /** Sends everything queued. Use with `after(() => flush())` or `await flush()` on serverless. Never rejects. */
@@ -161,5 +181,5 @@ function withRunomine(middlewareOrOptions, maybeOptions) {
 }
 var util_js_2 = require("./util.js");
 Object.defineProperty(exports, "uuidv7", { enumerable: true, get: function () { return util_js_2.uuidv7; } });
-const runomine = { createClient, defaultClient, init, track, pageview, flush, shutdown, withRunomine, visitorFor, checkoutMetadata, visitorHashAsync: hash_web_js_1.visitorHashAsync, fromRequest: context_js_1.fromRequest, isPageview: context_js_1.isPageview };
+const runomine = { createClient, defaultClient, init, track, pageview, sample, samples, flush, shutdown, withRunomine, visitorFor, checkoutMetadata, visitorHashAsync: hash_web_js_1.visitorHashAsync, fromRequest: context_js_1.fromRequest, isPageview: context_js_1.isPageview };
 exports.default = runomine;
